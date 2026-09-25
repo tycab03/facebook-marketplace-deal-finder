@@ -15,7 +15,7 @@ class MarketplaceListing:
 
 def clean_price(price_text: str) -> Optional[float]:
     """
-    Convert Marketplace price text into a number.
+    Convert price text into a number.
 
     Examples:
     "$1,200" -> 1200.0
@@ -49,6 +49,9 @@ def filter_listings(
     max_price: float = 0,
     location: str = "",
 ) -> List[MarketplaceListing]:
+    """
+    Filter listings by search term, price and location.
+    """
 
     query = search_query.lower().strip()
     location_query = location.lower().strip()
