@@ -260,11 +260,7 @@ def collect_listings(
         print("Browser opened.")
         print()
 
-        input(
-            "Once Marketplace listings are visible, "
-            "press Return here..."
-        )
-
+        
         page.wait_for_timeout(2000)
 
         print()

@@ -1,11 +1,9 @@
 import streamlit as st
 
 from marketplace_finder import (
-    MarketplaceListing,
+    collect_listings,
     filter_listings,
 )
-
-from deal_analyzer import calculate_deal
 
 
 # --------------------------------------------------
@@ -26,298 +24,190 @@ st.set_page_config(
 st.title("Facebook Marketplace Deal Finder")
 
 st.write(
-    "Search Facebook Marketplace and identify "
-    "potentially underpriced listings."
+    "Search Facebook Marketplace around Townsville "
+    "and find listings that match your price range."
 )
 
 st.divider()
 
 
 # --------------------------------------------------
+# SEARCH FORM
+# --------------------------------------------------
+
+with st.form("marketplace_search"):
+
+    search_query = st.text_input(
+        "What are you looking for?",
+        placeholder="e.g. PS5, iPhone 15, RTX 4070",
+    )
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+
+        min_price = st.number_input(
+            "Minimum price",
+            min_value=0,
+            value=0,
+            step=50,
+        )
+
+    with col2:
+
+        max_price = st.number_input(
+            "Maximum price",
+            min_value=0,
+            value=1000,
+            step=50,
+        )
+
+    search_button = st.form_submit_button(
+        "Search Marketplace",
+        type="primary",
+    )
+
+
+# --------------------------------------------------
 # SEARCH
 # --------------------------------------------------
 
-search_query = st.text_input(
-    "Search",
-    placeholder="e.g. PS5, iPhone 15 Pro, RTX 4070",
-)
+if search_button:
 
-
-location_col, radius_col = st.columns(2)
-
-
-with location_col:
-
-    location = st.text_input(
-        "Location",
-        value="Townsville",
-    )
-
-
-with radius_col:
-
-    radius = st.selectbox(
-        "Search radius",
-        options=[
-            20,
-            40,
-            60,
-            100,
-            250,
-            500,
-        ],
-        index=3,
-        format_func=lambda value: f"{value} km",
-    )
-
-
-price_col1, price_col2 = st.columns(2)
-
-
-with price_col1:
-
-    min_price = st.number_input(
-        "Minimum price ($)",
-        min_value=0,
-        value=0,
-        step=50,
-    )
-
-
-with price_col2:
-
-    max_price = st.number_input(
-        "Maximum price ($)",
-        min_value=0,
-        value=1000,
-        step=50,
-    )
-
-
-# --------------------------------------------------
-# TEMPORARY TEST DATA
-# --------------------------------------------------
-
-TEST_LISTINGS = [
-
-    {
-        "listing": MarketplaceListing(
-            title="Sony PlayStation 5 Disc Edition",
-            price=350,
-            location="Townsville",
-            url="https://example.com/ps5-1",
-        ),
-        "estimated_value": 550,
-    },
-
-    {
-        "listing": MarketplaceListing(
-            title="PS5 Slim Disc Edition",
-            price=500,
-            location="Townsville",
-            url="https://example.com/ps5-2",
-        ),
-        "estimated_value": 650,
-    },
-
-    {
-        "listing": MarketplaceListing(
-            title="Apple iPhone 15 Pro 256GB",
-            price=700,
-            location="Townsville",
-            url="https://example.com/iphone15",
-        ),
-        "estimated_value": 1000,
-    },
-
-    {
-        "listing": MarketplaceListing(
-            title="iPhone 13 128GB",
-            price=450,
-            location="Townsville",
-            url="https://example.com/iphone13",
-        ),
-        "estimated_value": 650,
-    },
-
-    {
-        "listing": MarketplaceListing(
-            title="Gaming PC RTX 4070",
-            price=1200,
-            location="Townsville",
-            url="https://example.com/gamingpc",
-        ),
-        "estimated_value": 1700,
-    },
-
-]
-
-
-# --------------------------------------------------
-# FIND DEALS
-# --------------------------------------------------
-
-if st.button(
-    "Find Deals",
-    type="primary",
-    use_container_width=True,
-):
-
-    if not search_query:
-
-        st.warning("Enter something to search for.")
-
-    elif max_price > 0 and min_price > max_price:
+    if not search_query.strip():
 
         st.warning(
-            "Minimum price cannot be greater than maximum price."
+            "Enter something to search for."
         )
+
+        st.stop()
+
+    if (
+        max_price > 0
+        and min_price > max_price
+    ):
+
+        st.warning(
+            "Minimum price cannot be greater "
+            "than maximum price."
+        )
+
+        st.stop()
+
+    # ----------------------------------------------
+    # COLLECT LISTINGS
+    # ----------------------------------------------
+
+    with st.spinner(
+        "Opening Facebook Marketplace..."
+    ):
+
+        try:
+
+            listings = collect_listings(
+                search_query=search_query,
+                max_listings=30,
+            )
+
+        except Exception as error:
+
+            st.error(
+                f"Marketplace search failed: {error}"
+            )
+
+            st.stop()
+
+    # ----------------------------------------------
+    # FILTER RESULTS
+    # ----------------------------------------------
+
+    filtered_listings = filter_listings(
+        listings=listings,
+        search_query=search_query,
+        min_price=float(min_price),
+        max_price=float(max_price),
+    )
+
+    # ----------------------------------------------
+    # RESULTS HEADER
+    # ----------------------------------------------
+
+    st.divider()
+
+    st.subheader(
+        f"Results for '{search_query}'"
+    )
+
+    st.caption(
+        f"{len(filtered_listings)} matching listings found"
+    )
+
+    # ----------------------------------------------
+    # NO RESULTS
+    # ----------------------------------------------
+
+    if not filtered_listings:
+
+        st.info(
+            "No matching listings were found."
+        )
+
+    # ----------------------------------------------
+    # DISPLAY RESULTS
+    # ----------------------------------------------
 
     else:
 
-        listings = [
-            item["listing"]
-            for item in TEST_LISTINGS
-        ]
+        for listing in filtered_listings:
 
+            with st.container(
+                border=True
+            ):
 
-        results = filter_listings(
-            listings=listings,
-            search_query=search_query,
-            min_price=min_price,
-            max_price=max_price,
-            location=location,
-        )
-
-
-        st.divider()
-
-
-        # ------------------------------------------
-        # NO RESULTS
-        # ------------------------------------------
-
-        if not results:
-
-            st.warning("No listings found.")
-
-
-        # ------------------------------------------
-        # RESULTS
-        # ------------------------------------------
-
-        else:
-
-            analysed_results = []
-
-
-            for listing in results:
-
-                estimated_value = next(
-                    item["estimated_value"]
-                    for item in TEST_LISTINGS
-                    if item["listing"].url == listing.url
+                image_column, info_column = st.columns(
+                    [1, 2]
                 )
 
+                # ------------------------------
+                # IMAGE
+                # ------------------------------
 
-                deal = calculate_deal(
-                    listing_price=listing.price,
-                    estimated_value=estimated_value,
-                )
+                with image_column:
 
+                    if listing.image_url:
 
-                analysed_results.append(
-                    {
-                        "listing": listing,
-                        "deal": deal,
-                    }
-                )
+                        st.image(listing.image_url,
+                                 width=300,
+                                 )
 
+                    else:
 
-            # Best deals first
-            analysed_results.sort(
-                key=lambda item: item["deal"]["deal_score"],
-                reverse=True,
-            )
-
-
-            st.subheader(
-                f"Found {len(analysed_results)} deal(s)"
-            )
-
-
-            # --------------------------------------
-            # DISPLAY DEALS
-            # --------------------------------------
-
-            for item in analysed_results:
-
-                listing = item["listing"]
-                deal = item["deal"]
-
-
-                with st.container(border=True):
-
-                    title_col, score_col = st.columns(
-                        [4, 1]
-                    )
-
-
-                    with title_col:
-
-                        st.subheader(
-                            listing.title
+                        st.write(
+                            "No image available"
                         )
 
-                        st.caption(
+                # ------------------------------
+                # INFORMATION
+                # ------------------------------
+
+                with info_column:
+
+                    st.subheader(
+                        listing.title
+                    )
+
+                    st.metric(
+                        "Asking Price",
+                        f"${listing.price:,.0f}",
+                    )
+
+                    if listing.location:
+
+                        st.write(
                             f"📍 {listing.location}"
                         )
 
-
-                    with score_col:
-
-                        st.metric(
-                            "Deal Score",
-                            f"{deal['deal_score']} / 10",
-                        )
-
-
-                    price_col, value_col, saving_col = (
-                        st.columns(3)
-                    )
-
-
-                    with price_col:
-
-                        st.metric(
-                            "Asking Price",
-                            f"${listing.price:,.0f}",
-                        )
-
-
-                    with value_col:
-
-                        st.metric(
-                            "Estimated Value",
-                            f"${deal['estimated_value']:,.0f}",
-                        )
-
-
-                    with saving_col:
-
-                        st.metric(
-                            "Potential Saving",
-                            f"${deal['saving']:,.0f}",
-                        )
-
-
-                    st.write(
-                        f"**{deal['discount_percent']}% "
-                        f"below estimated market value**"
-                    )
-
-
                     st.link_button(
-                        "View on Marketplace",
+                        "View on Facebook Marketplace",
                         listing.url,
                     )
