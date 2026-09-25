@@ -10,6 +10,7 @@ from playwright.sync_api import sync_playwright
 # CONFIG
 # --------------------------------------------------
 
+# Facebook Marketplace location ID for Townsville
 TOWNSVILLE_LOCATION_ID = "109177059102294"
 
 
@@ -70,7 +71,7 @@ def clean_price(price_text: str) -> Optional[float]:
 
 def is_price_line(text: str) -> bool:
     """
-    Return True when a line looks like a Marketplace price.
+    Check whether a line looks like a Marketplace price.
     """
 
     if not text:
@@ -91,13 +92,16 @@ def is_price_line(text: str) -> bool:
 
 
 # --------------------------------------------------
-# SEARCH URL
+# BUILD SEARCH URL
 # --------------------------------------------------
 
 def build_search_url(
     search_query: str,
     location_id: str = TOWNSVILLE_LOCATION_ID,
 ) -> str:
+    """
+    Build the Facebook Marketplace search URL.
+    """
 
     query = quote_plus(
         search_query.strip()
@@ -111,28 +115,28 @@ def build_search_url(
 
 
 # --------------------------------------------------
-# PARSE ONE MARKETPLACE CARD
+# PARSE LISTING CARD
 # --------------------------------------------------
 
 def parse_listing_card(
     lines: List[str],
 ):
     """
-    Extract price, title and location from the text
-    contained in a Facebook Marketplace result card.
+    Extract price, title and location from
+    a Facebook Marketplace listing card.
 
-    Handles cards such as:
+    Handles normal listings:
+
+    AU$600
+    PS5 Digital Edition
+    Townsville, QLD
+
+    And discounted listings:
 
     AU$800
     AU$700
     PS5 Slim Digital
     Townsville, QLD
-
-    as well as:
-
-    AU$600
-    PS5 Digital Edition
-    Mareeba, QLD
     """
 
     if not lines:
@@ -140,27 +144,28 @@ def parse_listing_card(
 
     first_price_index = None
 
-    # Find the first price line.
+    # --------------------------------------------------
+    # FIND FIRST PRICE
+    # --------------------------------------------------
+
     for index, line in enumerate(lines):
 
         if is_price_line(line):
+
             first_price_index = index
             break
 
     if first_price_index is None:
         return None
 
+    # --------------------------------------------------
+    # COLLECT CONSECUTIVE PRICE LINES
+    # --------------------------------------------------
+
     price_lines = []
 
     index = first_price_index
 
-    # Facebook may show:
-    #
-    # old price
-    # new price
-    # title
-    #
-    # Collect every consecutive price line first.
     while (
         index < len(lines)
         and is_price_line(lines[index])
@@ -175,8 +180,14 @@ def parse_listing_card(
     if not price_lines:
         return None
 
-    # The last displayed price is treated as
-    # the current asking price.
+    # --------------------------------------------------
+    # CURRENT PRICE
+    # --------------------------------------------------
+
+    # Facebook may show an old price followed by
+    # the new price. The final displayed price is
+    # treated as the current asking price.
+
     price = clean_price(
         price_lines[-1]
     )
@@ -184,23 +195,35 @@ def parse_listing_card(
     if price is None:
         return None
 
-    # First non-price line after the price(s)
-    # should be the listing title.
+    # --------------------------------------------------
+    # TITLE
+    # --------------------------------------------------
+
     if index >= len(lines):
         return None
 
-    title = lines[index].strip()
-
-    index += 1
+    title = (
+        lines[index]
+        .strip()
+    )
 
     if not title:
         return None
 
-    # Next line normally contains location.
+    index += 1
+
+    # --------------------------------------------------
+    # LOCATION
+    # --------------------------------------------------
+
     location = ""
 
     if index < len(lines):
-        location = lines[index].strip()
+
+        location = (
+            lines[index]
+            .strip()
+        )
 
     return {
         "title": title,
@@ -216,8 +239,16 @@ def parse_listing_card(
 def collect_listings(
     search_query: str,
     location_id: str = TOWNSVILLE_LOCATION_ID,
-    max_listings: int = 20,
+    max_listings: int = 30,
 ) -> List[MarketplaceListing]:
+    """
+    Open Facebook Marketplace using Playwright
+    and collect listing information.
+
+    The local .facebook_browser directory stores
+    the browser session so Facebook login can
+    persist between runs.
+    """
 
     search_url = build_search_url(
         search_query=search_query,
@@ -227,6 +258,10 @@ def collect_listings(
     listings = []
 
     with sync_playwright() as playwright:
+
+        # --------------------------------------------------
+        # OPEN BROWSER
+        # --------------------------------------------------
 
         context = playwright.chromium.launch_persistent_context(
             user_data_dir=".facebook_browser",
@@ -238,8 +273,11 @@ def collect_listings(
         )
 
         if context.pages:
+
             page = context.pages[0]
+
         else:
+
             page = context.new_page()
 
         print()
@@ -247,9 +285,14 @@ def collect_listings(
         print("FACEBOOK MARKETPLACE")
         print("----------------------------------------")
         print()
+
         print("Opening:")
         print(search_url)
         print()
+
+        # --------------------------------------------------
+        # OPEN MARKETPLACE
+        # --------------------------------------------------
 
         page.goto(
             search_url,
@@ -260,11 +303,18 @@ def collect_listings(
         print("Browser opened.")
         print()
 
-        
-        page.wait_for_timeout(2000)
+        # Give Facebook time to render the page
+        page.wait_for_timeout(
+            3000
+        )
 
-        print()
-        print("Loading Marketplace listings...")
+        # --------------------------------------------------
+        # SCROLL TO LOAD MORE RESULTS
+        # --------------------------------------------------
+
+        print(
+            "Loading Marketplace listings..."
+        )
 
         for _ in range(5):
 
@@ -276,6 +326,10 @@ def collect_listings(
             page.wait_for_timeout(
                 1500
             )
+
+        # --------------------------------------------------
+        # FIND MARKETPLACE LINKS
+        # --------------------------------------------------
 
         links = page.locator(
             'a[href*="/marketplace/item/"]'
@@ -289,7 +343,13 @@ def collect_listings(
 
         seen_urls = set()
 
-        for link_index in range(link_count):
+        # --------------------------------------------------
+        # PARSE RESULTS
+        # --------------------------------------------------
+
+        for link_index in range(
+            link_count
+        ):
 
             if len(listings) >= max_listings:
                 break
@@ -300,9 +360,9 @@ def collect_listings(
 
             try:
 
-                # ----------------------------------
+                # ------------------------------------------
                 # URL
-                # ----------------------------------
+                # ------------------------------------------
 
                 href = link.get_attribute(
                     "href"
@@ -312,13 +372,16 @@ def collect_listings(
                     continue
 
                 if href.startswith("/"):
+
                     href = (
                         "https://www.facebook.com"
                         + href
                     )
 
+                # Remove tracking parameters
                 href = href.split("?")[0]
 
+                # Skip duplicate listings
                 if href in seen_urls:
                     continue
 
@@ -326,9 +389,9 @@ def collect_listings(
                     href
                 )
 
-                # ----------------------------------
-                # CARD TEXT
-                # ----------------------------------
+                # ------------------------------------------
+                # LISTING TEXT
+                # ------------------------------------------
 
                 text = (
                     link
@@ -352,9 +415,9 @@ def collect_listings(
                 if not parsed:
                     continue
 
-                # ----------------------------------
+                # ------------------------------------------
                 # IMAGE
-                # ----------------------------------
+                # ------------------------------------------
 
                 image_url = ""
 
@@ -371,18 +434,20 @@ def collect_listings(
                         or ""
                     )
 
-                # ----------------------------------
+                # ------------------------------------------
                 # CREATE LISTING
-                # ----------------------------------
+                # ------------------------------------------
+
+                listing = MarketplaceListing(
+                    title=parsed["title"],
+                    price=parsed["price"],
+                    location=parsed["location"],
+                    url=href,
+                    image_url=image_url,
+                )
 
                 listings.append(
-                    MarketplaceListing(
-                        title=parsed["title"],
-                        price=parsed["price"],
-                        location=parsed["location"],
-                        url=href,
-                        image_url=image_url,
-                    )
+                    listing
                 )
 
             except Exception as error:
@@ -407,6 +472,14 @@ def filter_listings(
     min_price: float = 0,
     max_price: float = 0,
 ) -> List[MarketplaceListing]:
+    """
+    Filter Marketplace listings by:
+
+    - search relevance
+    - obvious accessory listings
+    - minimum price
+    - maximum price
+    """
 
     query = (
         search_query
@@ -416,22 +489,116 @@ def filter_listings(
 
     results = []
 
+    # --------------------------------------------------
+    # NORMALISE PRODUCT SEARCH
+    # --------------------------------------------------
+
+    ps5_search = query in [
+        "ps5",
+        "playstation 5",
+        "playstation5",
+    ]
+
+    # --------------------------------------------------
+    # PS5 ACCESSORY EXCLUSIONS
+    # --------------------------------------------------
+
+    ps5_exclusion_words = [
+        "controller",
+        "controllers",
+        "stand",
+        "stands",
+        "headphone",
+        "headphones",
+        "headset",
+        "headsets",
+        "game",
+        "games",
+        "charging",
+        "charger",
+        "dock",
+        "case",
+        "cover",
+        "skin",
+        "cable",
+        "cables",
+        "hdmi",
+        "remote",
+        "portal",
+        "ps portal",
+        "vr",
+        "psvr",
+        "faceplate",
+        "faceplates",
+        "disc drive",
+        "disk drive",
+    ]
+
+    # --------------------------------------------------
+    # FILTER EACH LISTING
+    # --------------------------------------------------
+
     for listing in listings:
 
-        if (
-            query
-            and query not in listing.title.lower()
-        ):
-            continue
+        title = (
+            listing.title
+            .lower()
+            .strip()
+        )
+
+        # --------------------------------------------------
+        # SEARCH RELEVANCE
+        # --------------------------------------------------
+
+        if ps5_search:
+
+            relevant = (
+                "ps5" in title
+                or "playstation 5" in title
+            )
+
+            if not relevant:
+                continue
+
+        elif query:
+
+            if query not in title:
+                continue
+
+        # --------------------------------------------------
+        # REMOVE PS5 ACCESSORIES
+        # --------------------------------------------------
+
+        if ps5_search:
+
+            contains_accessory_word = any(
+                word in title
+                for word in ps5_exclusion_words
+            )
+
+            if contains_accessory_word:
+                continue
+
+        # --------------------------------------------------
+        # MINIMUM PRICE
+        # --------------------------------------------------
 
         if listing.price < min_price:
             continue
+
+        # --------------------------------------------------
+        # MAXIMUM PRICE
+        # --------------------------------------------------
 
         if (
             max_price > 0
             and listing.price > max_price
         ):
             continue
+
+        # --------------------------------------------------
+        # KEEP LISTING
+        # --------------------------------------------------
 
         results.append(
             listing
@@ -448,29 +615,50 @@ if __name__ == "__main__":
 
     results = collect_listings(
         search_query="PS5",
-        max_listings=10,
+        max_listings=30,
+    )
+
+    filtered_results = filter_listings(
+        listings=results,
+        search_query="PS5",
     )
 
     print()
     print("----------------------------------------")
-    print("RESULTS")
+    print("FILTERED RESULTS")
     print("----------------------------------------")
 
-    if not results:
+    print()
+    print(
+        f"{len(filtered_results)} relevant listings found."
+    )
+
+    for number, listing in enumerate(
+        filtered_results,
+        start=1,
+    ):
 
         print()
-        print("No listings were collected.")
+        print(
+            f"Listing {number}"
+        )
 
-    else:
+        print(
+            "Title:",
+            listing.title,
+        )
 
-        for number, listing in enumerate(
-            results,
-            start=1,
-        ):
+        print(
+            "Price:",
+            listing.price,
+        )
 
-            print()
-            print(f"Listing {number}")
-            print("Title:", listing.title)
-            print("Price:", listing.price)
-            print("Location:", listing.location)
-            print("URL:", listing.url)
+        print(
+            "Location:",
+            listing.location,
+        )
+
+        print(
+            "URL:",
+            listing.url,
+        )
