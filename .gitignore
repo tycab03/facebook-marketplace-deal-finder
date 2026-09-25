@@ -24,3 +24,5 @@ env/
 # Data/cache files
 *.csv
 *.json
+
+.facebook_browser/
