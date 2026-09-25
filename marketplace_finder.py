@@ -473,132 +473,40 @@ def filter_listings(
     max_price: float = 0,
 ) -> List[MarketplaceListing]:
     """
-    Filter Marketplace listings by:
+    Apply basic price filtering.
 
-    - search relevance
-    - obvious accessory listings
-    - minimum price
-    - maximum price
+    Detailed product relevance and comparable
+    matching is handled by deal_analyzer.py.
     """
-
-    query = (
-        search_query
-        .lower()
-        .strip()
-    )
 
     results = []
 
-    # --------------------------------------------------
-    # NORMALISE PRODUCT SEARCH
-    # --------------------------------------------------
-
-    ps5_search = query in [
-        "ps5",
-        "playstation 5",
-        "playstation5",
-    ]
-
-    # --------------------------------------------------
-    # PS5 ACCESSORY EXCLUSIONS
-    # --------------------------------------------------
-
-    ps5_exclusion_words = [
-        "controller",
-        "controllers",
-        "stand",
-        "stands",
-        "headphone",
-        "headphones",
-        "headset",
-        "headsets",
-        "game",
-        "games",
-        "charging",
-        "charger",
-        "dock",
-        "case",
-        "cover",
-        "skin",
-        "cable",
-        "cables",
-        "hdmi",
-        "remote",
-        "portal",
-        "ps portal",
-        "vr",
-        "psvr",
-        "faceplate",
-        "faceplates",
-        "disc drive",
-        "disk drive",
-    ]
-
-    # --------------------------------------------------
-    # FILTER EACH LISTING
-    # --------------------------------------------------
-
     for listing in listings:
 
-        title = (
-            listing.title
-            .lower()
-            .strip()
-        )
+        # ------------------------------------------
+        # INVALID PRICE
+        # ------------------------------------------
 
-        # --------------------------------------------------
-        # SEARCH RELEVANCE
-        # --------------------------------------------------
+        if listing.price < 0:
+            continue
 
-        if ps5_search:
-
-            relevant = (
-                "ps5" in title
-                or "playstation 5" in title
-            )
-
-            if not relevant:
-                continue
-
-        elif query:
-
-            if query not in title:
-                continue
-
-        # --------------------------------------------------
-        # REMOVE PS5 ACCESSORIES
-        # --------------------------------------------------
-
-        if ps5_search:
-
-            contains_accessory_word = any(
-                word in title
-                for word in ps5_exclusion_words
-            )
-
-            if contains_accessory_word:
-                continue
-
-        # --------------------------------------------------
+        # ------------------------------------------
         # MINIMUM PRICE
-        # --------------------------------------------------
+        # ------------------------------------------
 
         if listing.price < min_price:
             continue
 
-        # --------------------------------------------------
+        # ------------------------------------------
         # MAXIMUM PRICE
-        # --------------------------------------------------
+        # ------------------------------------------
 
         if (
             max_price > 0
             and listing.price > max_price
         ):
-            continue
 
-        # --------------------------------------------------
-        # KEEP LISTING
-        # --------------------------------------------------
+            continue
 
         results.append(
             listing
